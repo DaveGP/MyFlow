@@ -1,0 +1,13 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <!-- macOS implementations of the MyFlow.Core interfaces. -->
+  <PropertyGroup>
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+  </PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\MyFlow.Core\MyFlow.Core.csproj" />
+  </ItemGroup>
+  <ItemGroup>
+    <!-- Cross-platform global keyboard hook (libuiohook), used for normal shortcuts and Escape. -->
+    <PackageReference Include="SharpHook" Version="7.1.3" />
+  </ItemGroup>
+</Project>
