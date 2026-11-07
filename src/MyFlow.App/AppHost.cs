@@ -19,6 +19,7 @@ public sealed class AppHost : IDisposable
     private readonly HttpClient _http = new() { Timeout = TimeSpan.FromMinutes(30) };
     private WhisperServerTranscriber? _transcriber;
     private DictationController? _controller;
+    private (string, string, string) _whisperKey;
 
     public AppHost()
     {
@@ -50,24 +51,23 @@ public sealed class AppHost : IDisposable
     /// <summary>(Re)builds the pipeline from the current settings and starts listening for the shortcut.</summary>
     public void Start()
     {
-        _transcriber?.Dispose();
-        _transcriber = new WhisperServerTranscriber(_http, () => MacTools.FindTool("whisper-server"),
-            Settings.WhisperModel, Settings.Language, Settings.CustomVocabulary);
+        // Only restart whisper-server when something it depends on changed.
+        var whisperKey = (Settings.WhisperModel, Settings.Language, Settings.CustomVocabulary);
+        if (_transcriber == null || whisperKey != _whisperKey)
+        {
+            _transcriber?.Dispose();
+            _transcriber = new WhisperServerTranscriber(_http, () => MacTools.FindTool("whisper-server"),
+                Settings.WhisperModel, Settings.Language, Settings.CustomVocabulary);
+            _whisperKey = whisperKey;
+        }
 
         Cleaner = new LlmTextCleaner(CreateLanguageModel());
         _controller = new DictationController(Recorder, _transcriber, Cleaner,
             new MacTextInserter(() => Settings), new MacSelectionReader(), () => Settings);
         ControllerChanged?.Invoke(this, _controller);
 
-        if (HotkeySpec.TryParse(Settings.Hotkey, out var spec, out var error))
-        {
-            Hotkeys.Start(spec);
-        }
-        else
-        {
-            Log.Warn($"Invalid shortcut '{Settings.Hotkey}' ({error}); using Globe.");
-            Hotkeys.Start(HotkeySpec.Globe);
-        }
+        StartHotkeys();
+        WatchForAccessibilityGrant();
 
         // Load the speech model and the cleanup model in the background so the first dictation is fast.
         var progress = new Progress<string>(m => StartupProgress?.Invoke(this, m));
@@ -98,6 +98,42 @@ public sealed class AppHost : IDisposable
                 }
             });
         }
+    }
+
+    private void StartHotkeys()
+    {
+        if (HotkeySpec.TryParse(Settings.Hotkey, out var spec, out var error))
+        {
+            Hotkeys.Start(spec);
+        }
+        else
+        {
+            Log.Warn($"Invalid shortcut '{Settings.Hotkey}' ({error}); using Globe.");
+            Hotkeys.Start(HotkeySpec.Globe);
+        }
+    }
+
+    private int _watchingAccessibility;
+
+    /// <summary>
+    /// The keyboard listeners can't see anything until Accessibility is granted, and they
+    /// don't recover by themselves — so restart them the moment permission arrives.
+    /// </summary>
+    private void WatchForAccessibilityGrant()
+    {
+        if (Permissions.IsAccessibilityTrusted()) return;
+        if (Interlocked.Exchange(ref _watchingAccessibility, 1) == 1) return;
+        Log.Info("Waiting for Accessibility permission…");
+        _ = Task.Run(async () =>
+        {
+            while (!Permissions.IsAccessibilityTrusted())
+            {
+                await Task.Delay(TimeSpan.FromSeconds(2));
+            }
+            Log.Info("Accessibility permission granted; restarting shortcut listeners.");
+            StartHotkeys();
+            Interlocked.Exchange(ref _watchingAccessibility, 0);
+        });
     }
 
     public ILanguageModel? CreateLanguageModel() => Settings.CleanupProvider switch

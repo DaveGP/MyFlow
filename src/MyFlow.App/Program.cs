@@ -18,7 +18,19 @@ internal static class Program
         }
 
         Log.Info($"MyFlow {typeof(Program).Assembly.GetName().Version} starting");
-        return BuildAvaloniaApp().StartWithClassicDesktopLifetime(args, Avalonia.Controls.ShutdownMode.OnExplicitShutdown);
+        try
+        {
+            return BuildAvaloniaApp().StartWithClassicDesktopLifetime(args, Avalonia.Controls.ShutdownMode.OnExplicitShutdown);
+        }
+        catch (InvalidOperationException ex) when (ex.Message.Contains("RenderTimer") && !args.Contains("--retried"))
+        {
+            // Seen once when launched while the display was waking up: macOS refused a display
+            // link. Wait a moment and start a fresh copy of the app instead of crashing.
+            Log.Warn("Display wasn't ready (" + ex.Message + "); relaunching in 5 seconds.");
+            Thread.Sleep(5000);
+            System.Diagnostics.Process.Start(Environment.ProcessPath!, [.. args, "--retried"]);
+            return 0;
+        }
     }
 
     // Also used by the Avalonia designer.
