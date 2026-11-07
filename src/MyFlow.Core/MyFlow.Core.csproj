@@ -1,0 +1,10 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <!-- Platform-neutral heart of MyFlow: settings, interfaces, the dictation
+       pipeline, Whisper/Ollama/cloud clients. No OS-specific code lives here. -->
+  <ItemGroup>
+    <PackageReference Include="Anthropic" Version="13.6.0" />
+  </ItemGroup>
+  <ItemGroup>
+    <InternalsVisibleTo Include="MyFlow.Tests" />
+  </ItemGroup>
+</Project>
