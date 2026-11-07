@@ -4,7 +4,6 @@ obj/
 build/
 dist/
 native/macos/build/
-*.app/
 
 # IDE / OS
 .vs/
